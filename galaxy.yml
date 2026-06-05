@@ -1,0 +1,20 @@
+---
+namespace: blueprints
+name: jenkins_integrations
+version: 0.1.0
+readme: README.md
+authors:
+  - Platform Engineering
+description: "Optional integrations that wire Jenkins to existing peers (Vault, LDAP, SSO, SCM)."
+license:
+  - MIT
+tags:
+  - tools
+  - blueprints
+  - jenkins
+repository: https://github.com/iac-foundry/ansible-collection-jenkins_integrations
+dependencies: {}
+build_ignore:
+  - .github
+  - "*.tar.gz"
+  - extensions

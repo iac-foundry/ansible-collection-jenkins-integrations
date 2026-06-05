@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Include blueprints.jenkins_integrations.github_oauth with caller-supplied variables
+      ansible.builtin.include_role:
+        name: blueprints.jenkins_integrations.github_oauth
+      vars:
+        jenkins_integration_github_endpoint: "https://example.invalid"

@@ -1,0 +1,21 @@
+---
+- name: Assert peer endpoint is supplied by the caller
+  ansible.builtin.assert:
+    that:
+      - jenkins_integration_authentik_endpoint | length > 0
+    fail_msg: "jenkins_integration_authentik_endpoint must be supplied by the caller; integrations never discover peers."
+  tags:
+    - authentik_sso
+
+- name: Record caller-supplied integration secret presence (never retrieved here)
+  ansible.builtin.set_fact:
+    jenkins_integration_authentik_client_secret_present: "{{ jenkins_integration_authentik_client_secret | length > 0 }}"
+  no_log: true
+  tags:
+    - authentik_sso
+
+- name: Scaffold wiring placeholder
+  ansible.builtin.debug:
+    msg: "Scaffold for authentik_sso: wire jenkins to the peer at {{ jenkins_integration_authentik_endpoint }}."
+  tags:
+    - authentik_sso

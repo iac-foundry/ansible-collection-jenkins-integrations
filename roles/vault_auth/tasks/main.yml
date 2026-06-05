@@ -1,0 +1,21 @@
+---
+- name: Assert peer endpoint is supplied by the caller
+  ansible.builtin.assert:
+    that:
+      - jenkins_integration_vault_endpoint | length > 0
+    fail_msg: "jenkins_integration_vault_endpoint must be supplied by the caller; integrations never discover peers."
+  tags:
+    - vault_auth
+
+- name: Record caller-supplied integration secret presence (never retrieved here)
+  ansible.builtin.set_fact:
+    jenkins_integration_vault_client_secret_present: "{{ jenkins_integration_vault_client_secret | length > 0 }}"
+  no_log: true
+  tags:
+    - vault_auth
+
+- name: Scaffold wiring placeholder
+  ansible.builtin.debug:
+    msg: "Scaffold for vault_auth: wire jenkins to the peer at {{ jenkins_integration_vault_endpoint }}."
+  tags:
+    - vault_auth

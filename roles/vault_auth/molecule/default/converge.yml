@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Include blueprints.jenkins_integrations.vault_auth with caller-supplied variables
+      ansible.builtin.include_role:
+        name: blueprints.jenkins_integrations.vault_auth
+      vars:
+        jenkins_integration_vault_endpoint: "https://example.invalid"

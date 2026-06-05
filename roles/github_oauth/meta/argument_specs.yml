@@ -1,0 +1,17 @@
+---
+argument_specs:
+  main:
+    short_description: "github_oauth integration for jenkins."
+    options:
+      jenkins_integration_github_endpoint:
+        type: str
+        required: true
+        description: Peer endpoint/issuer/URL (caller-supplied; never discovered).
+      jenkins_integration_github_client_id:
+        type: str
+        default: ""
+        description: Client identifier for the peer.
+      jenkins_integration_github_client_secret:
+        type: str
+        default: ""
+        description: Caller-supplied client secret; never retrieved by this role.

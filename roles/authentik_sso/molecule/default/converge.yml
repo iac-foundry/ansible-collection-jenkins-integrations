@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Include blueprints.jenkins_integrations.authentik_sso with caller-supplied variables
+      ansible.builtin.include_role:
+        name: blueprints.jenkins_integrations.authentik_sso
+      vars:
+        jenkins_integration_authentik_endpoint: "https://example.invalid"

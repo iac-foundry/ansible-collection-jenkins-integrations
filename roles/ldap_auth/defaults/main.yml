@@ -1,0 +1,6 @@
+---
+# This role wires jenkins to an ALREADY-EXISTING peer. It receives every endpoint and
+# credential as a variable and never discovers or retrieves them (BLUEPRINTS_INTEGRATION_STANDARDS.md).
+jenkins_integration_ldap_endpoint: ""           # REQUIRED: peer endpoint / issuer / URL (caller-supplied)
+jenkins_integration_ldap_client_id: ""
+jenkins_integration_ldap_client_secret: ""      # caller-supplied secret; never retrieved by this role
