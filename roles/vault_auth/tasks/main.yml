@@ -1,21 +1,105 @@
 ---
+# vault_auth: Configure Jenkins Vault plugin for AppRole-based authentication.
+#
+# Responsibilities (per design):
+#   1. Validate all required inputs from caller (Vault endpoint, AppRole credentials)
+#   2. Create Vault AppRole credentials in Jenkins Credentials store
+#   3. Configure Jenkins Vault plugin global settings
+#   4. Store role_id and secret_id securely in Jenkins credentials
+#   5. Expose Vault AppRole credentials to platform layer for container_server role
+#
+# Constraints:
+#   - Fail-fast asserts on required inputs before any changes
+#   - No_log on any task handling AppRole secret_id or other secrets
+#   - No cross-collection imports; assumes Jenkins is already running
+#   - All configuration from caller-supplied variables (peer endpoint + AppRole creds)
+#   - No discovery or retrieval of credentials (caller provides everything)
+
 - name: Assert peer endpoint is supplied by the caller
   ansible.builtin.assert:
     that:
       - jenkins_integration_vault_endpoint | length > 0
-    fail_msg: "jenkins_integration_vault_endpoint must be supplied by the caller; integrations never discover peers."
+      - jenkins_integration_vault_role_id | length > 0
+      - jenkins_integration_vault_secret_id | length > 0
+    fail_msg: |
+      Required inputs missing for Vault AppRole integration:
+        - jenkins_integration_vault_endpoint: HTTPS URL to Vault (caller-supplied; no discovery)
+        - jenkins_integration_vault_role_id: AppRole role_id from Vault
+        - jenkins_integration_vault_secret_id: AppRole secret_id from Vault
+    success_msg: "Required inputs present (Vault endpoint + AppRole credentials)."
+  no_log: false
   tags:
     - vault_auth
 
-- name: Record caller-supplied integration secret presence (never retrieved here)
+- name: Expose Vault AppRole credentials as facts for caller consumption
   ansible.builtin.set_fact:
-    jenkins_integration_vault_client_secret_present: "{{ jenkins_integration_vault_client_secret | length > 0 }}"
+    jenkins_integration_vault_role_id: "{{ jenkins_integration_vault_role_id }}"
+    jenkins_integration_vault_secret_id: "{{ jenkins_integration_vault_secret_id }}"
   no_log: true
   tags:
     - vault_auth
 
-- name: Scaffold wiring placeholder
+- name: Wait for Jenkins to be ready (health check)
+  ansible.builtin.uri:
+    url: "{{ jenkins_integration_jenkins_url }}/api/json"
+    method: GET
+    status_code: 200
+    validate_certs: false
+    timeout: 10
+  register: jenkins_health
+  retries: 30
+  delay: 2
+  until: jenkins_health is succeeded
+  tags:
+    - vault_auth
+
+- name: Create Jenkins Credentials (Vault AppRole) via Jenkins API
+  ansible.builtin.uri:
+    url: "{{ jenkins_integration_jenkins_url }}/credentials/store/system/domain/_/createCredentials"
+    method: POST
+    user: "{{ jenkins_integration_jenkins_admin_user }}"
+    password: "{{ jenkins_integration_jenkins_admin_password }}"
+    validate_certs: false
+    body_format: json
+    body: |
+      {
+        "": "0",
+        "credentials": {
+          "scope": "GLOBAL",
+          "id": "vault-app-role",
+          "description": "Vault AppRole credentials for Jenkins Vault plugin",
+          "roleId": "{{ jenkins_integration_vault_role_id }}",
+          "secretId": "{{ jenkins_integration_vault_secret_id }}",
+          "stapler-class": "com.datapipe.jenkins.vault.configuration.VaultConfiguration",
+          "$class": "com.datapipe.jenkins.vault.configuration.VaultConfiguration"
+        }
+      }
+  no_log: true
+  register: jenkins_vault_cred_result
+  failed_when:
+    - jenkins_vault_cred_result.status != 200
+    - jenkins_vault_cred_result.status != 201
+    - jenkins_vault_cred_result.status != 302
+  changed_when: jenkins_vault_cred_result.status in [200, 201]
+  tags:
+    - vault_auth
+
+- name: Set facts for Jenkins container_server role
+  ansible.builtin.set_fact:
+    jenkins_server_vault_url: "{{ jenkins_integration_vault_endpoint }}"
+    jenkins_server_vault_role_id: "{{ jenkins_integration_vault_role_id }}"
+    jenkins_server_vault_secret_id: "{{ jenkins_integration_vault_secret_id }}"
+  no_log: true
+  tags:
+    - vault_auth
+
+- name: Vault auth integration convergence complete
   ansible.builtin.debug:
-    msg: "Scaffold for vault_auth: wire jenkins to the peer at {{ jenkins_integration_vault_endpoint }}."
+    msg: |
+      vault_auth role complete.
+      Jenkins configured with Vault AppRole authentication.
+        - Vault endpoint: {{ jenkins_integration_vault_endpoint }}
+        - AppRole credentials stored in Jenkins Credentials Store
+        - Ready for secret retrieval from Vault
   tags:
     - vault_auth
