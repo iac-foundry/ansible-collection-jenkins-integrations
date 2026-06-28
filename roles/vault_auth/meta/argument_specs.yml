@@ -7,11 +7,23 @@ argument_specs:
         type: str
         required: true
         description: Peer endpoint/issuer/URL (caller-supplied; never discovered).
-      jenkins_integration_vault_client_id:
+      jenkins_integration_vault_role_id:
         type: str
-        default: ""
-        description: Client identifier for the peer.
-      jenkins_integration_vault_client_secret:
+        required: true
+        description: AppRole role_id from Vault (caller-supplied; never discovered).
+      jenkins_integration_vault_secret_id:
         type: str
-        default: ""
-        description: Caller-supplied client secret; never retrieved by this role.
+        required: true
+        description: AppRole secret_id from Vault (caller-supplied; never discovered).
+      jenkins_integration_jenkins_url:
+        type: str
+        default: "https://localhost:8443"
+        description: Jenkins base URL used for credential creation and health checks.
+      jenkins_integration_jenkins_admin_user:
+        type: str
+        default: "admin"
+        description: Jenkins admin username (must have credentials-store access).
+      jenkins_integration_jenkins_admin_password:
+        type: str
+        required: true
+        description: Caller-supplied Jenkins admin password; never retrieved by this role.
