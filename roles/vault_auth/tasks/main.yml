@@ -86,6 +86,20 @@
     - vault_auth
 
 - name: Create Jenkins Credentials (Vault AppRole) via Jenkins API
+  vars:
+    # createCredentials is a Stapler FORM endpoint: it expects a single
+    # x-www-form-urlencoded field named "json" whose value is the
+    # url-encoded JSON. ansible's body_format: form-urlencoded with a dict
+    # did NOT encode this correctly here -- Jenkins received a mangled
+    # value and threw 'JSONException: A JSONObject text must begin with {
+    # at character 1 of credentials' (HTTP 500). Building the body as a raw
+    # 'json=<urlencoded JSON>' string exactly reproduces the request that
+    # was verified to work live (curl --data-urlencode). The credential
+    # class is VaultAppRoleCredential (under .credentials.), NOT
+    # VaultConfiguration (.configuration. is the plugin's GLOBAL config
+    # object, not a Credentials type); constructor (scope, id, description,
+    # roleId, secretId, path) verified via javap.
+    _vault_cred_json: '{"credentials":{"scope":"GLOBAL","id":"vault-app-role","description":"Vault AppRole credentials for Jenkins Vault plugin","roleId":"{{ jenkins_integration_vault_role_id }}","secretId":"{{ jenkins_integration_vault_secret_id }}","path":"approle","$class":"com.datapipe.jenkins.vault.credentials.VaultAppRoleCredential"}}'
   ansible.builtin.uri:
     url: "{{ jenkins_integration_jenkins_url }}/credentials/store/system/domain/_/createCredentials"
     method: POST
@@ -96,38 +110,14 @@
     headers:
       Jenkins-Crumb: "{{ jenkins_crumb.json.crumb }}"
       Cookie: "{{ jenkins_crumb.cookies_string }}"
-    # createCredentials is a form endpoint: it expects a single
-    # x-www-form-urlencoded field named "json", NOT a raw JSON request
-    # body. The credential class is VaultAppRoleCredential (under
-    # .credentials.), NOT VaultConfiguration (.configuration. is the
-    # plugin's GLOBAL config object, not a Credentials type). Verified
-    # against the installed plugin via javap: constructor is (scope, id,
-    # description, roleId, secretId, path).
-    body_format: form-urlencoded
-    body:
-      json: >-
-        {"credentials":{"scope":"GLOBAL","id":"vault-app-role",
-        "description":"Vault AppRole credentials for Jenkins Vault plugin",
-        "roleId":"{{ jenkins_integration_vault_role_id }}",
-        "secretId":"{{ jenkins_integration_vault_secret_id }}",
-        "path":"approle",
-        "$class":"com.datapipe.jenkins.vault.credentials.VaultAppRoleCredential"}}
-    status_code: [200, 201, 302, 400, 401, 403, 404, 500]
+      Content-Type: "application/x-www-form-urlencoded"
+    body_format: raw
+    body: "json={{ _vault_cred_json | urlencode }}"
+    status_code: [200, 302]
   no_log: true
   register: jenkins_vault_cred_result
   changed_when: jenkins_vault_cred_result.status in [200, 302]
   when: "'vault-app-role' not in (jenkins_existing_creds.json.credentials | map(attribute='id') | list)"
-  tags:
-    - vault_auth
-
-- name: "TEMP DEBUG: safe fields from crumb + create result (no secrets)"
-  ansible.builtin.debug:
-    msg:
-      crumb_present: "{{ jenkins_crumb.json.crumb is defined and (jenkins_crumb.json.crumb | length) > 0 }}"
-      cookies_string_present: "{{ (jenkins_crumb.cookies_string | default('') | length) > 0 }}"
-      create_status: "{{ jenkins_vault_cred_result.status | default('skipped') }}"
-      create_msg: "{{ jenkins_vault_cred_result.msg | default('n/a') }}"
-      create_body_snippet: "{{ (jenkins_vault_cred_result.content | default('')) [:200] }}"
   tags:
     - vault_auth
 
