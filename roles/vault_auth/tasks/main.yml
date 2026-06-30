@@ -61,6 +61,14 @@
     password: "{{ jenkins_integration_jenkins_admin_password }}"
     validate_certs: false
     body_format: json
+    # The credential class is VaultAppRoleCredential (under .credentials.),
+    # NOT VaultConfiguration (under .configuration.) -- the latter is the
+    # plugin's GLOBAL config object, not a Credentials type, so posting it
+    # to createCredentials failed (Jenkins cannot instantiate a credential
+    # from a non-credential class). Verified against the installed plugin
+    # via javap: the constructor is (scope, id, description, roleId,
+    # secretId, path), so path (the AppRole mount, default "approle") is
+    # included here.
     body: |
       {
         "": "0",
@@ -70,8 +78,9 @@
           "description": "Vault AppRole credentials for Jenkins Vault plugin",
           "roleId": "{{ jenkins_integration_vault_role_id }}",
           "secretId": "{{ jenkins_integration_vault_secret_id }}",
-          "stapler-class": "com.datapipe.jenkins.vault.configuration.VaultConfiguration",
-          "$class": "com.datapipe.jenkins.vault.configuration.VaultConfiguration"
+          "path": "approle",
+          "stapler-class": "com.datapipe.jenkins.vault.credentials.VaultAppRoleCredential",
+          "$class": "com.datapipe.jenkins.vault.credentials.VaultAppRoleCredential"
         }
       }
   no_log: true
