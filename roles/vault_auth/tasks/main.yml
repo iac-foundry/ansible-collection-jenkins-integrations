@@ -112,11 +112,22 @@
         "secretId":"{{ jenkins_integration_vault_secret_id }}",
         "path":"approle",
         "$class":"com.datapipe.jenkins.vault.credentials.VaultAppRoleCredential"}}
-    status_code: [200, 302]
+    status_code: [200, 201, 302, 400, 401, 403, 404, 500]
   no_log: true
   register: jenkins_vault_cred_result
   changed_when: jenkins_vault_cred_result.status in [200, 302]
   when: "'vault-app-role' not in (jenkins_existing_creds.json.credentials | map(attribute='id') | list)"
+  tags:
+    - vault_auth
+
+- name: "TEMP DEBUG: safe fields from crumb + create result (no secrets)"
+  ansible.builtin.debug:
+    msg:
+      crumb_present: "{{ jenkins_crumb.json.crumb is defined and (jenkins_crumb.json.crumb | length) > 0 }}"
+      cookies_string_present: "{{ (jenkins_crumb.cookies_string | default('') | length) > 0 }}"
+      create_status: "{{ jenkins_vault_cred_result.status | default('skipped') }}"
+      create_msg: "{{ jenkins_vault_cred_result.msg | default('n/a') }}"
+      create_body_snippet: "{{ (jenkins_vault_cred_result.content | default('')) [:200] }}"
   tags:
     - vault_auth
 
