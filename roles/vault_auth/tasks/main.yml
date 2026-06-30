@@ -88,18 +88,29 @@
 - name: Create Jenkins Credentials (Vault AppRole) via Jenkins API
   vars:
     # createCredentials is a Stapler FORM endpoint: it expects a single
-    # x-www-form-urlencoded field named "json" whose value is the
-    # url-encoded JSON. ansible's body_format: form-urlencoded with a dict
-    # did NOT encode this correctly here -- Jenkins received a mangled
-    # value and threw 'JSONException: A JSONObject text must begin with {
-    # at character 1 of credentials' (HTTP 500). Building the body as a raw
-    # 'json=<urlencoded JSON>' string exactly reproduces the request that
-    # was verified to work live (curl --data-urlencode). The credential
-    # class is VaultAppRoleCredential (under .credentials.), NOT
-    # VaultConfiguration (.configuration. is the plugin's GLOBAL config
-    # object, not a Credentials type); constructor (scope, id, description,
-    # roleId, secretId, path) verified via javap.
-    _vault_cred_json: '{"credentials":{"scope":"GLOBAL","id":"vault-app-role","description":"Vault AppRole credentials for Jenkins Vault plugin","roleId":"{{ jenkins_integration_vault_role_id }}","secretId":"{{ jenkins_integration_vault_secret_id }}","path":"approle","$class":"com.datapipe.jenkins.vault.credentials.VaultAppRoleCredential"}}'
+    # x-www-form-urlencoded field named "json" whose value is url-encoded
+    # JSON. Two earlier attempts failed:
+    #   1. body_format: form-urlencoded with a dict -> mangled value, 500.
+    #   2. A JSON STRING literal in vars: -> Ansible auto-converted that
+    #      JSON-looking string into a dict, then urlencode took str() of it,
+    #      sending a Python dict repr (single quotes, '='), so Jenkins threw
+    #      "JSONException: A JSONObject text must begin with { ... of
+    #      credentials={'scope': 'GLOBAL', ...}".
+    # Build a genuine dict and serialize it explicitly with to_json, then
+    # urlencode -- this produces real JSON regardless of Ansible's native
+    # type coercion. Credential class VaultAppRoleCredential (under
+    # .credentials., NOT .configuration.VaultConfiguration which is the
+    # global config, not a Credentials type); constructor (scope, id,
+    # description, roleId, secretId, path) verified via javap.
+    _vault_cred_payload:
+      credentials:
+        scope: GLOBAL
+        id: vault-app-role
+        description: "Vault AppRole credentials for Jenkins Vault plugin"
+        roleId: "{{ jenkins_integration_vault_role_id }}"
+        secretId: "{{ jenkins_integration_vault_secret_id }}"
+        path: approle
+        "$class": com.datapipe.jenkins.vault.credentials.VaultAppRoleCredential
   ansible.builtin.uri:
     url: "{{ jenkins_integration_jenkins_url }}/credentials/store/system/domain/_/createCredentials"
     method: POST
@@ -112,7 +123,7 @@
       Cookie: "{{ jenkins_crumb.cookies_string }}"
       Content-Type: "application/x-www-form-urlencoded"
     body_format: raw
-    body: "json={{ _vault_cred_json | urlencode }}"
+    body: "json={{ _vault_cred_payload | to_json | urlencode }}"
     status_code: [200, 302]
   no_log: true
   register: jenkins_vault_cred_result
