@@ -53,43 +53,70 @@
   tags:
     - vault_auth
 
+# Jenkins' createCredentials endpoint is CSRF-protected: a POST without a
+# valid crumb (and the matching session cookie) is rejected. The crumb is
+# bound to the web session, so the crumb GET and the create POST must share
+# the same cookie. Fetch the crumb first and carry its cookies_string into
+# the POST. (Verified live: crumb + cookie + form-urlencoded json field ->
+# 302 created; the previous raw-JSON, crumb-less POST never worked.)
+- name: Fetch Jenkins CSRF crumb
+  ansible.builtin.uri:
+    url: "{{ jenkins_integration_jenkins_url }}/crumbIssuer/api/json"
+    method: GET
+    user: "{{ jenkins_integration_jenkins_admin_user }}"
+    password: "{{ jenkins_integration_jenkins_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    timeout: 10
+  register: jenkins_crumb
+  tags:
+    - vault_auth
+
+- name: Check whether the Vault AppRole credential already exists (idempotency)
+  ansible.builtin.uri:
+    url: "{{ jenkins_integration_jenkins_url }}/credentials/store/system/domain/_/api/json?tree=credentials[id]"
+    method: GET
+    user: "{{ jenkins_integration_jenkins_admin_user }}"
+    password: "{{ jenkins_integration_jenkins_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    timeout: 10
+  register: jenkins_existing_creds
+  tags:
+    - vault_auth
+
 - name: Create Jenkins Credentials (Vault AppRole) via Jenkins API
   ansible.builtin.uri:
     url: "{{ jenkins_integration_jenkins_url }}/credentials/store/system/domain/_/createCredentials"
     method: POST
     user: "{{ jenkins_integration_jenkins_admin_user }}"
     password: "{{ jenkins_integration_jenkins_admin_password }}"
+    force_basic_auth: true
     validate_certs: false
-    body_format: json
-    # The credential class is VaultAppRoleCredential (under .credentials.),
-    # NOT VaultConfiguration (under .configuration.) -- the latter is the
-    # plugin's GLOBAL config object, not a Credentials type, so posting it
-    # to createCredentials failed (Jenkins cannot instantiate a credential
-    # from a non-credential class). Verified against the installed plugin
-    # via javap: the constructor is (scope, id, description, roleId,
-    # secretId, path), so path (the AppRole mount, default "approle") is
-    # included here.
-    body: |
-      {
-        "": "0",
-        "credentials": {
-          "scope": "GLOBAL",
-          "id": "vault-app-role",
-          "description": "Vault AppRole credentials for Jenkins Vault plugin",
-          "roleId": "{{ jenkins_integration_vault_role_id }}",
-          "secretId": "{{ jenkins_integration_vault_secret_id }}",
-          "path": "approle",
-          "stapler-class": "com.datapipe.jenkins.vault.credentials.VaultAppRoleCredential",
-          "$class": "com.datapipe.jenkins.vault.credentials.VaultAppRoleCredential"
-        }
-      }
+    headers:
+      Jenkins-Crumb: "{{ jenkins_crumb.json.crumb }}"
+      Cookie: "{{ jenkins_crumb.cookies_string }}"
+    # createCredentials is a form endpoint: it expects a single
+    # x-www-form-urlencoded field named "json", NOT a raw JSON request
+    # body. The credential class is VaultAppRoleCredential (under
+    # .credentials.), NOT VaultConfiguration (.configuration. is the
+    # plugin's GLOBAL config object, not a Credentials type). Verified
+    # against the installed plugin via javap: constructor is (scope, id,
+    # description, roleId, secretId, path).
+    body_format: form-urlencoded
+    body:
+      json: >-
+        {"credentials":{"scope":"GLOBAL","id":"vault-app-role",
+        "description":"Vault AppRole credentials for Jenkins Vault plugin",
+        "roleId":"{{ jenkins_integration_vault_role_id }}",
+        "secretId":"{{ jenkins_integration_vault_secret_id }}",
+        "path":"approle",
+        "$class":"com.datapipe.jenkins.vault.credentials.VaultAppRoleCredential"}}
+    status_code: [200, 302]
   no_log: true
   register: jenkins_vault_cred_result
-  failed_when:
-    - jenkins_vault_cred_result.status != 200
-    - jenkins_vault_cred_result.status != 201
-    - jenkins_vault_cred_result.status != 302
-  changed_when: jenkins_vault_cred_result.status in [200, 201]
+  changed_when: jenkins_vault_cred_result.status in [200, 302]
+  when: "'vault-app-role' not in (jenkins_existing_creds.json.credentials | map(attribute='id') | list)"
   tags:
     - vault_auth
 
